@@ -1,0 +1,6 @@
+**/__pycache__
+**/.DS_Store
+results/*
+inference/python-docker
+inference/python-docker/**
+models/third_party

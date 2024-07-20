@@ -1,0 +1,4 @@
+from .table_default import build_table_default_scene
+
+from .table_green_cloth_v1 import build_rh20t_table_green_cloth_v1_scene
+from .table_green_cloth_v2 import build_rh20t_table_green_cloth_v2_scene
