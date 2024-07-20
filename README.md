@@ -1,4 +1,6 @@
-## ICML 2024 WORKSHOP: Multi-modal Foundation Model meets Embodied AI - CGA Challenge
+# Composable Generalization Agents Challenge
+
+This challenge is held at [ICML 2024 WORKSHOP: Multi-modal Foundation Model meets Embodied AI](https://icml-mfm-eai.github.io).
 
 This repository contains the benchmark toolkit and the RH20T-P data api.
 
@@ -153,4 +155,4 @@ You can refer to [here](https://github.com/Zx55/cga-challenge/blob/main/rh20tp_e
 
 #### 2.2 RH20T-P API
 
-We provide the api for RH20T-P usage in `data/rh20tp`
+We provide the api for RH20T-P usage in `data/rh20tp`. 
