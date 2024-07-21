@@ -98,6 +98,8 @@ The argument `--gt` will sample a predefined gt trajectory to complete the task 
 
     * Planning Accuracy
 
+        * If you do not select to output plans, you will not participate in the rankings of planning accuracy leaderboard
+
         * No restriction on the definition of primitive skills
 
         * Manual check will be conduct (at least 3 reviewers)
@@ -120,7 +122,7 @@ TODO: szl
 
 ##### Submission 
 
-After the test server opens since xxx, you can submit the name and tag of uploaded model image on Dockerhub.
+After the test server opens since [xxx], you can submit the name and tag of uploaded model image on Dockerhub.
 
 We will pull the image on the test server, and conduct the benchmark.
 
