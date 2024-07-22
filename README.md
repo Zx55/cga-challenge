@@ -157,4 +157,4 @@ You can refer to [here](https://github.com/Zx55/cga-challenge/blob/main/rh20tp_e
 
 #### 2.2 RH20T-P API
 
-We provide the api for RH20T-P usage in `data/rh20tp`. 
+We provide the api for RH20T-P usage in `data/rh20tp/dataset.py`. See [here](data/rh20tp/README.md) for details.

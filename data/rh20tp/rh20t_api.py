@@ -152,3 +152,23 @@ def pos_quat_gripper_to_pos_rot6d_gripper(items):
         outputs.append(output)  
     outputs = np.stack(outputs).astype(np.float32)
     return outputs 
+
+
+def homo_2d_to_2d(tcp_img:np.array, width = 640, height = 360):
+    tcp_img[0][0] = tcp_img[0][0] / tcp_img[2][0]
+    tcp_img[1][0] = tcp_img[1][0] / tcp_img[2][0]
+    tcp_img[2][0] = tcp_img[2][0] / tcp_img[2][0]
+    tcp_rgb = np.array([[tcp_img[0][0] / 2],[tcp_img[1][0] / 2]])
+    tcp_rgb[0][0] = max(min(tcp_rgb[0][0], width), 0)
+    tcp_rgb[1][0] = max(min(tcp_rgb[1][0], height), 0)
+    return tuple(tcp_rgb.transpose(1,0)[0].astype(int).tolist())
+
+
+def get_camera_params(metadata, timestamp, serial, have_transfered=False):
+    pred_tcp_camera = get_tcp_aligned(metadata, timestamp)
+    if not have_transfered:
+        serial_extrinsics = metadata['camera'][serial]['extrinsics']
+        pred_tcp_camera = serial_extrinsics @ pose_array_quat_2_matrix(pred_tcp_camera)
+    
+    intrinsics = metadata['camera'][serial]['intrinsics']
+    return intrinsics, pred_tcp_camera

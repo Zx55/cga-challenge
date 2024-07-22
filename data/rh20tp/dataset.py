@@ -16,6 +16,8 @@ try:
         get_tcp_aligned,
         get_gripper,
         check_same_target_sequence,
+        homo_2d_to_2d,
+        get_camera_params
     )
 except:
     # for debug
@@ -26,6 +28,8 @@ except:
         get_tcp_aligned,
         get_gripper,
         check_same_target_sequence,
+        homo_2d_to_2d,
+        get_camera_params
     )
 
 try: 
@@ -57,6 +61,14 @@ def get_ee_pos(metadata, timestamp, gripper_type='command'):
     return ee_pos
 
 
+def get_ee_pos_2d(metadata, timestamp, serial):
+    intrisics, tcp2cam = get_camera_params(metadata, timestamp, serial, False)
+    pt_2d = homo_2d_to_2d(intrisics @ tcp2cam @ np.array([0., 0., 0., 1.], dtype=np.float64).reshape(4, 1))
+    x, y = pt_2d[0] / 640, pt_2d[1] / 360
+    d = tcp2cam[2][3]
+    return np.array([x, y, d])
+
+
 EE_POS_MIN = np.asarray([-0.57257075, -0.61797443, -0.33872867])
 EE_POS_MAX = np.asarray([1.24384486, 0.41246224, 1.72241654])
 
@@ -73,6 +85,7 @@ class LazyRH20TDataset(Dataset):
         multi_frame_n_frame=0,
         multi_frame_n_time=0,
         use_ceph=False,
+        use_cache=False,
     ):
         '''
         Basic API for RH20T, containing multi-view/multi-frame image/depth data
@@ -88,6 +101,8 @@ class LazyRH20TDataset(Dataset):
             multi_frame_n_time: total duration (second) of sampled multi-frame, 
                                 interval of multi-frame = multi_frame_n_time / multi_frame_n_frame
             use_ceph: if use ceph client
+            use_cache: save processed data to ~/.cache/rh20tp/ if cache file not exist,
+                       read cache file for fast loading if exist.
         '''
         super().__init__()
         self.data_path = os.path.join(data_root, 'RH20T_cfg{}/{}/cam_{}/{}/{}.{}')
@@ -97,6 +112,7 @@ class LazyRH20TDataset(Dataset):
         self.multi_frame_n_time = multi_frame_n_time
 
         self.data_types = ['color', 'depth']
+        self.use_cache = use_cache
 
         self.client = self.init_client(use_ceph)
         self.anno = self.read_anno(anno_path)
@@ -238,17 +254,50 @@ class LazyRH20TDataset(Dataset):
         return data_dicts
     
     def get_cameras(self, metadata):
+        primary_camera = sorted(list(metadata['camera'].keys()))[0]
         if self.use_multi_view:
             cameras = metadata['camera']
         else:
-            primary_camera = sorted(list(metadata['camera'].keys()))[0]
             cameras = {primary_camera: metadata['camera'][primary_camera]}
-        return cameras
+        return cameras, primary_camera
+
+    def get_cached_file(self):
+        raise NotImplementedError
     
-    def read_metadata(self, metadata, task_id, cameras):
+    def save_cached_file(self, data):
+        if not self.use_cache:
+            return
+        
+        if (not dist.is_initialized()) or dist.get_rank() == 0:
+            cached_dir, cached_file = self.get_cached_file()
+            os.makedirs(cached_dir, exist_ok=True)
+
+            with open(cached_file, 'wb') as f:
+                pickle.dump(data, f)
+            rank0_print(f'save cached file to {cached_file}')
+        if dist.is_initialized():
+            dist.barrier()
+
+    def read_cached_file(self):
+        if not self.use_cache:
+            return None
+
+        _, cached_file = self.get_cached_file()
+        if os.path.exists(cached_file):
+            rank0_print(f'read cached file from {cached_file}')
+            with open(cached_file, 'rb') as f:
+                cached_file = pickle.load(f)
+            return cached_file
+        return None
+
+    def read_metadata(self, metadata, task_id, cameras, primary_camera):
         raise NotImplementedError
 
     def read_anno(self, anno_path):
+        cached_file = self.read_cached_file()
+        if cached_file is not None:
+            return cached_file
+
         if anno_path.endswith('.pkl'):
             with open(anno_path, 'rb') as f:
                 metadata = pickle.load(f)
@@ -258,10 +307,11 @@ class LazyRH20TDataset(Dataset):
         annos = []
         for metadata_i in tqdm(metadata, desc=f'build {self.__class__.__name__}'):
             task_id = metadata_i['demo_folder']
-            cameras = self.get_cameras(metadata_i)
-            data_dicts = self.read_metadata(metadata_i, task_id, cameras)
+            cameras, primary_camera = self.get_cameras(metadata_i)
+            data_dicts = self.read_metadata(metadata_i, task_id, cameras, primary_camera)
             annos.extend(data_dicts)
 
+        self.save_cached_file(annos)
         return annos
     
     def read_image(self, image_file: str):
@@ -319,7 +369,8 @@ class LazyRH20TPrimitiveDataset(LazyRH20TDataset):
         use_multi_frame=False, 
         multi_frame_n_frame=0, 
         multi_frame_n_time=0, 
-        use_ceph=False
+        use_ceph=False,
+        use_cache=False,
     ):
         '''
         API for RH20T-P dataset, containing primitive-level information
@@ -329,9 +380,14 @@ class LazyRH20TPrimitiveDataset(LazyRH20TDataset):
         '''
         self.sample_rate = sample_rate
         super().__init__(data_root, anno_path, use_multi_view, use_multi_frame, 
-                         multi_frame_n_frame, multi_frame_n_time, use_ceph)
+                         multi_frame_n_frame, multi_frame_n_time, use_ceph, use_cache)
 
-    def get_action_labels(self, metadata, action_list, index, normalized=False):
+    def get_cached_file(self):
+        cached_dir = os.path.join(os.path.expanduser('~'), '.cache', 'rh20tp')
+        cached_file = os.path.join(cached_dir, f'rh20tp_primitive_cache.pkl')
+        return cached_dir, cached_file
+
+    def get_action_labels(self, metadata, action_list, serial, index, normalized=False):
         '''
         Return:
             TODO
@@ -350,10 +406,10 @@ class LazyRH20TPrimitiveDataset(LazyRH20TDataset):
         if current_action == 'done':
             action_list[index]['start_arm_pos'] = action_list[index - 1]['end_arm_pos']
         
-        cur_ee_pos_2d = np.array(action_list[index]['start_arm_pos'])
         cur_ee_pos = get_ee_pos(metadata, start_timestamp, 'info')
-        target_ee_pos_2d = np.array(action_list[index]['end_arm_pos'])
+        cur_ee_pos_2d = get_ee_pos_2d(metadata, start_timestamp, serial)
         target_ee_pos = get_ee_pos(metadata, end_timestamp, 'command')
+        target_ee_pos_2d = get_ee_pos_2d(metadata, end_timestamp, serial)
 
         if normalized:
             cur_ee_pos[:3] = (cur_ee_pos[:3] - EE_POS_MIN) / (EE_POS_MAX - EE_POS_MIN)
@@ -361,20 +417,23 @@ class LazyRH20TPrimitiveDataset(LazyRH20TDataset):
 
         # generate trajectory
         if current_action == 'done':
-            trajectory_ee = None
+            trajectory_ee, trajectory_ee_2d = None, None
         else:
-            trajectory_timestamps = np.linspace(
-                start_timestamp,
-                end_timestamp,
-                (end_timestamp - start_timestamp) // (1000 // self.sample_rate))
+            num_samples = max((end_timestamp - start_timestamp) // (1000 // self.sample_rate), 1)
+            trajectory_timestamps = np.linspace(start_timestamp, end_timestamp, num_samples)
 
-            trajectory_ee = []
+            trajectory_ee, trajectory_ee_2d = [], []
             for timestamp in trajectory_timestamps:
                 ee_pos = get_ee_pos(metadata, timestamp, 'command')
                 if normalized:
                     ee_pos[:3] = (ee_pos[:3] - EE_POS_MIN) / (EE_POS_MAX - EE_POS_MIN)
                 trajectory_ee.append(ee_pos)
+
+                ee_pos_2d = get_ee_pos_2d(metadata, timestamp, serial)
+                trajectory_ee_2d.append(ee_pos_2d)
+
             trajectory_ee = np.vstack(trajectory_ee)
+            trajectory_ee_2d = np.vstack(trajectory_ee_2d)
             
         return dict(
             cur_ee_pos_2d=cur_ee_pos_2d,
@@ -382,17 +441,19 @@ class LazyRH20TPrimitiveDataset(LazyRH20TDataset):
             target_ee_pos_2d=target_ee_pos_2d,
             target_ee_pos=target_ee_pos,
             trajectory_ee=trajectory_ee,
+            trajectory_ee_2d=trajectory_ee_2d,
             current_action=current_action,
             historical_actions=historical_actions
         )
     
-    def read_metadata(self, metadata, task_id, cameras):
+    def read_metadata(self, metadata, task_id, cameras, primary_camera):
         action_list = metadata['action_list']
         pick_timestamps = [action['start_timestamp'] for action in action_list]
 
         data_dicts = []
         for i, timestamp in enumerate(pick_timestamps):
-            action_labels = self.get_action_labels(metadata, action_list, index=i)
+            action_labels = self.get_action_labels(
+                metadata, action_list, primary_camera, index=i)
             image_dict = self.get_multi_view_image_dict(
                 task_id, timestamp, cameras)
             data_dict = dict(
@@ -421,15 +482,22 @@ class LazyRH20TActionDataset(LazyRH20TDataset):
         use_multi_frame=False, 
         multi_frame_n_frame=0, 
         multi_frame_n_time=0,
-        use_ceph=False
+        use_ceph=False,
+        use_cache=False,
     ):
         self.sample_rate = sample_rate
         self.sample_n_time = sample_n_time
         super().__init__(data_root, anno_path, use_multi_view, use_multi_frame, 
-                         multi_frame_n_frame, multi_frame_n_time, use_ceph)
+                         multi_frame_n_frame, multi_frame_n_time, use_ceph, use_cache)
+        
+    def get_cached_file(self):
+        cached_dir = os.path.join(os.path.expanduser('~'), '.cache', 'rh20tp')
+        cached_file = os.path.join(cached_dir, f'rh20tp_action_cache.pkl')
+        return cached_dir, cached_file
 
-    def get_action_labels(self, metadata, cur_timestamp, normalized=False):
+    def get_action_labels(self, metadata, cur_timestamp, serial, normalized=False):
         cur_ee_pos = get_ee_pos(metadata, cur_timestamp, 'info')
+        cur_ee_pos_2d = get_ee_pos_2d(metadata, cur_timestamp, serial)
 
         # sample target frames
         end_timestamp = int(cur_timestamp + self.sample_n_time * (1000 // self.sample_rate))
@@ -439,14 +507,16 @@ class LazyRH20TActionDataset(LazyRH20TDataset):
             self.sample_n_time + 1).tolist()[1:]
         assert len(target_regular_timestamps) == self.sample_n_time
 
-        target_ee_pos = []
+        target_ee_pos, target_ee_pos_2d = [], []
         for timestamp in target_regular_timestamps:
             target_ee_pos.append(get_ee_pos(metadata, timestamp, 'command'))
+            target_ee_pos_2d.append(get_ee_pos_2d(metadata, timestamp, serial))
         target_ee_pos = np.vstack(target_ee_pos)
+        target_ee_pos_2d = np.vstack(target_ee_pos_2d)
 
         # filter standby actions
         if check_same_target_sequence(cur_ee_pos, target_ee_pos):  
-            return None
+            return None        
 
         # normalization
         if normalized:
@@ -454,22 +524,22 @@ class LazyRH20TActionDataset(LazyRH20TDataset):
             target_ee_pos[:, :3] = (target_ee_pos[:, :3] - EE_POS_MIN) / (EE_POS_MAX - EE_POS_MIN)
 
         return dict(
-            cur_ee_pos=cur_ee_pos, 
-            target_ee_pos=target_ee_pos[:self.sample_n_time, :]
+            cur_ee_pos=cur_ee_pos,
+            cur_ee_pos_2d=cur_ee_pos_2d,
+            target_ee_pos=target_ee_pos[:self.sample_n_time, :],
+            target_ee_pos_2d=target_ee_pos_2d[:self.sample_n_time, :]
         )
 
-    def read_metadata(self, metadata, task_id, cameras):
+    def read_metadata(self, metadata, task_id, cameras, primary_camera):
         base_aligned_timestamps = metadata['base_aligned_timestamps']
         start_timestamp = base_aligned_timestamps[0]
         end_timestamp = base_aligned_timestamps[-1]
-        pick_timestamps = np.linspace(
-            start_timestamp, 
-            end_timestamp, 
-            (end_timestamp - start_timestamp) // (1000 // self.sample_rate))
+        num_samples = max((end_timestamp - start_timestamp) // (1000 // self.sample_rate), 1)
+        pick_timestamps = np.linspace(start_timestamp, end_timestamp, num_samples)
         
         data_dicts = []
         for timestamp in pick_timestamps:
-            action_labels = self.get_action_labels(metadata, timestamp)
+            action_labels = self.get_action_labels(metadata, timestamp, primary_camera)
             if action_labels is None:
                 continue
 
@@ -493,11 +563,12 @@ class LazyRH20TActionDataset(LazyRH20TDataset):
 if __name__ == '__main__':
     data = LazyRH20TActionDataset(
         data_root='',
-        anno_path='../sources/action_clips_addon_cfg1234567.pkl',
+        anno_path='../sources/rh20tp_cga_metadata_v1.0.pkl',
         use_multi_view=True,
         use_multi_frame=True,
         multi_frame_n_frame=3,
         multi_frame_n_time=1,
+        use_cache=True
     )
 
     d = data[0]
