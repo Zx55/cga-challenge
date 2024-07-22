@@ -561,7 +561,7 @@ class LazyRH20TActionDataset(LazyRH20TDataset):
 
 
 if __name__ == '__main__':
-    data = LazyRH20TActionDataset(
+    data = LazyRH20TPrimitiveDataset(
         data_root='',
         anno_path='../sources/rh20tp_cga_metadata_v1.0.pkl',
         use_multi_view=True,

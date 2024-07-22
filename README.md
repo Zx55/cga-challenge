@@ -153,7 +153,7 @@ You can refer to [here](https://github.com/Zx55/cga-challenge/blob/main/rh20tp_e
 |Sources|URL|
 |:---:|:---:|
 |RH20T dataset|[download](https://rh20t.github.io/#download)|
-|RH20T-P annotation|[download]()|
+|RH20T-P annotation|[download](https://drive.google.com/file/d/1ssNJikkaEYViz4yr-vIdQjmWoqiLWuwz/view?usp=sharing)|
 
 #### 2.2 RH20T-P API
 
