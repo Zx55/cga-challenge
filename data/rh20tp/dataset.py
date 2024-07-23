@@ -312,6 +312,7 @@ class LazyRH20TDataset(Dataset):
             annos.extend(data_dicts)
 
         self.save_cached_file(annos)
+        rank0_print(f'totally {len(metadata)} demonstrations, and {len(annos)} samples')
         return annos
     
     def read_image(self, image_file: str):
@@ -336,7 +337,6 @@ class LazyRH20TDataset(Dataset):
             action_labels: see `self.get_action_labels(...)`
         '''
         anno = self.anno[index]
-        import ipdb; ipdb.set_trace()
 
         image_file = anno['image']
         if isinstance(image_file, str):
@@ -376,7 +376,7 @@ class LazyRH20TPrimitiveDataset(LazyRH20TDataset):
         API for RH20T-P dataset, containing primitive-level information
 
         Args:
-            sample_rate: 
+            sample_rate: how many frames are sampled per second when constructing the trajectory
         '''
         self.sample_rate = sample_rate
         super().__init__(data_root, anno_path, use_multi_view, use_multi_frame, 
@@ -390,7 +390,20 @@ class LazyRH20TPrimitiveDataset(LazyRH20TDataset):
     def get_action_labels(self, metadata, action_list, serial, index, normalized=False):
         '''
         Return:
-            TODO
+            current_action: str, current primitive skill
+            historical_actions: List[str], completed primitive skills in this task
+            cur_ee_pos: np.ndarray, current end-effector (gripper) 3D coordinate (xyz + quat rot + gripper 
+                         width) under world coordinate system
+            cur_ee_pos_2d: np.ndarray, current end-effector (gripper) 2D coordinate (x, y, d) under image 
+                           coordinate system
+            target_ee_pos: np.ndarray, GT end-effector (gripper) 3D coordinate (xyz + quat rot + gripper 
+                           width) under world coordinate system
+            target_ee_pos_2d: np.ndarray, GT end-effector (gripper) 2D coordinate (x, y, d) under image 
+                           coordinate system
+            trajectory_ee: np.ndarray, 3D trajectory formed by the end-effector (gripper) 3D coordinate (xyz
+                           + quat rot + gripper width) from start_timestamp to end_timestamp
+            trajectory_ee-2d: np.ndarray, 2D trajectory formed by the end-effector (gripper) 2D coordinate (
+                              x, y, d) from start_timestamp to end_timestamp
         '''
         # actions (historical + current)
         historical_actions = [
@@ -436,14 +449,14 @@ class LazyRH20TPrimitiveDataset(LazyRH20TDataset):
             trajectory_ee_2d = np.vstack(trajectory_ee_2d)
             
         return dict(
+            current_action=current_action,
+            historical_actions=historical_actions,
             cur_ee_pos_2d=cur_ee_pos_2d,
             cur_ee_pos=cur_ee_pos,
             target_ee_pos_2d=target_ee_pos_2d,
             target_ee_pos=target_ee_pos,
             trajectory_ee=trajectory_ee,
             trajectory_ee_2d=trajectory_ee_2d,
-            current_action=current_action,
-            historical_actions=historical_actions
         )
     
     def read_metadata(self, metadata, task_id, cameras, primary_camera):
@@ -485,6 +498,15 @@ class LazyRH20TActionDataset(LazyRH20TDataset):
         use_ceph=False,
         use_cache=False,
     ):
+        '''
+        API for RH20T dataset, containing actions at each timestamp
+
+        Args:
+            sample_n_time: action labels will contain the actions sampled from current 
+                           timestamp to `sample_n_time` (second)
+            sample_rate: how many frames are sampled per second between current timestamp
+                         to `sample_n_time`
+        '''
         self.sample_rate = sample_rate
         self.sample_n_time = sample_n_time
         super().__init__(data_root, anno_path, use_multi_view, use_multi_frame, 
@@ -496,6 +518,16 @@ class LazyRH20TActionDataset(LazyRH20TDataset):
         return cached_dir, cached_file
 
     def get_action_labels(self, metadata, cur_timestamp, serial, normalized=False):
+        '''
+        Return:
+            cur_ee_pos: np.ndarray, current end-effector 3D coordinate (xyz + quat rot + gripper width) under world 
+                        coordinate system
+            cur_ee_pos_2d: np.ndarray, current end-effector 2D coordinate (x, y, d) under image coordinate system
+            target_ee_pos: np.ndarray, GT end-effector 3D coordinate (xyz + quat rot + gripper width) from current 
+                           timestamp to `sample_n_time` under world coordinate system
+            target_ee_pos_2d: np.ndarray, GT end-effector 2D coordinate (x, y, d) from current timestamp to 
+                              `sample_n_time` under image coordinate system
+        '''
         cur_ee_pos = get_ee_pos(metadata, cur_timestamp, 'info')
         cur_ee_pos_2d = get_ee_pos_2d(metadata, cur_timestamp, serial)
 
