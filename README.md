@@ -118,7 +118,7 @@ The [model](model) contains the basic components needed to implement a CGA. The 
 
 1. Run the simulation
 ```bash
-    python main.py --env Rh20t-PickObject-v0 --seed 0
+    python main.py --env Rh20t-PickObject-v0 --eval --seed 0
 ```
 
 2. Start your CGA
