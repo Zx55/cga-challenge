@@ -106,11 +106,30 @@ The argument `--gt` will sample a predefined gt trajectory to complete the task 
 
 ##### Integrate Your CGAs by Wrapper
 
-TODO: szl
+The [model](model) contains the basic components needed to implement a CGA. The `ModelWrapper` is a base class for a CGA. You need to implement the methods defined in [model_wrapper.py](model/model_wrapper.py) for your own CGA.
+
+1. load_model(): initialize your model, load the ckpt and prepare for inference.
+2. initialize(): initialize inference settings, preparing for the next new manipulation task.
+3. pred_action(): the inference process, see [protocal](#evaluation-protocal) for input output definition.
+
+[sample_model.py](model/sample_model.py) shows a CGA instance. 
 
 ##### Test Your CGAs Locally
 
-TODO: szl
+1. Run the simulation
+```bash
+    python main.py --env Rh20t-PickObject-v0 --seed 0
+```
+
+2. Start your CGA
+To deploy your CGA, define the [Dockerfile](model/Dockerfile). And then build the docker and start it.
+```bash
+    cd model
+    docker build --no-cache -t {docker_name} .
+    cd ..
+    docker run --gpus all -v comm:/comm {docker_name}
+```
+You can see data transfer in [comm](comm) if everything works.
 
 #### 1.3 Submission
 
@@ -118,7 +137,17 @@ TODO: szl
 
 ##### Upload to DockerHub
 
-TODO: szl
+Save the docker as `tar`.
+```bash
+    docker save -o {docker_name}.tar {docker_name}:latest
+```
+And than push to the docker hub. 
+
+We will download your docker for evaluation.
+```bash 
+    docker load -i {docker_name}.tar
+    docker run --gpus all -v comm:/comm {docker_name}
+```
 
 ##### Submission 
 

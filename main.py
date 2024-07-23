@@ -7,12 +7,10 @@ import os
 import pytz
 
 from rh20tp_envs import *
-from utils import init_seed, list_envs, get_args
+from utils import init_seed, list_envs, get_args, Controller
 
 os.environ['GIT_PYTHON_REFRESH'] = 'quiet'
 
-
-# srun -p AI4Good_S --gres=gpu:1 python main.py --env TestObject
 def main(args):
     current_time = datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y%m%d_%H%M%S")
     work_dir = os.path.join('results', current_time)
@@ -51,21 +49,8 @@ def main(args):
         max_steps_per_video=max_steps)
     obs, _ = env.reset(seed=args.seed) # reset with a seed for determinism
 
-    for i in range(max_steps):
-        if args.gt and hasattr(env, "gt_action_space"):
-            action = env.gt_action_space()
-        else:
-            action = env.action_space.sample()
-        obs, reward, terminated, truncated, info = env.step(action)
-
-        img = env.render()
-        assert img.shape[0] == args.num_envs
-        for env_i in range(args.num_envs):
-            img_file = os.path.join(work_dir, f'env_{env_i}', f'step_{i}.png')
-            cv2.imwrite(img_file, img.cpu().numpy()[env_i][:, :, ::-1])
-
-    env.close()
-
+    controller = Controller(env=env, work_dir=work_dir, args=args)
+    controller.start_service()
 
 if __name__ == '__main__':
     args = get_args()

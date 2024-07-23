@@ -5,3 +5,5 @@ inference/python-docker
 inference/python-docker/**
 models/third_party
 data/sources
+comm/input.npy
+comm/output.npy
