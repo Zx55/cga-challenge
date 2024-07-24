@@ -152,7 +152,7 @@ And then push it to the DockerHub.
 
 ##### Submission 
 
-After the test server opens since [xxx], you can submit the name and tag of uploaded model image on Dockerhub.
+After the test server opens since **Aug 30, 2024**, you can submit the name and tag of uploaded model image on Dockerhub.
 
 We will pull the image on the test server, and conduct the benchmark.
 
