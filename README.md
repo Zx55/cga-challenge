@@ -106,30 +106,36 @@ The argument `--gt` will sample a predefined gt trajectory to complete the task 
 
 ##### Integrate Your CGAs by Wrapper
 
-The [model](model) contains the basic components needed to implement a CGA. The `ModelWrapper` is a base class for a CGA. You need to implement the methods defined in [model_wrapper.py](model/model_wrapper.py) for your own CGA.
+We provide basic components in `model/` to help you integrate your CGAs to benchmark toolkit. Specifically, you should first wrap CGAs with `ModelWrapper` and implement the corresponding methods defined in [model_wrapper.py](model/model_wrapper.py) to communicate with simulator. See [protocal](#evaluation-protocal) for input output definition.
 
-1. load_model(): initialize your model, load the ckpt and prepare for inference.
-2. initialize(): initialize inference settings, preparing for the next new manipulation task.
-3. pred_action(): the inference process, see [protocal](#evaluation-protocal) for input output definition.
+1. `load_model()`: initialize your model, load the ckpt and prepare for inference.
+
+2. `initialize()`: initialize inference settings, preparing for the next new manipulation task.
+
+3. `pred_action()`: the inference process.
 
 [sample_model.py](model/sample_model.py) shows a CGA instance. 
 
 ##### Test Your CGAs Locally
 
 1. Run the simulation
-```bash
+
+    ```bash
     python main.py --env Rh20t-PickObject-v0 --eval --seed 0
-```
+    ```
 
 2. Start your CGA
-To deploy your CGA, define the [Dockerfile](model/Dockerfile). And then build the docker and start it.
-```bash
+
+    To deploy your CGA, define the [Dockerfile](model/  Dockerfile). And then build the docker and start it.
+
+    ```bash
     cd model
     docker build --no-cache -t {docker_name} .
     cd ..
     docker run --gpus all -v comm:/comm {docker_name}
-```
-You can see data transfer in [comm](comm) if everything works.
+    ```
+
+    You can see data transfer in `/comm` if everything works.
 
 #### 1.3 Submission
 
@@ -137,17 +143,12 @@ You can see data transfer in [comm](comm) if everything works.
 
 ##### Upload to DockerHub
 
-Save the docker as `tar`.
-```bash
-    docker save -o {docker_name}.tar {docker_name}:latest
-```
-And than push to the docker hub. 
+Save the docker image as `tar`.
 
-We will download your docker for evaluation.
-```bash 
-    docker load -i {docker_name}.tar
-    docker run --gpus all -v comm:/comm {docker_name}
+```bash
+docker save -o {docker_name}.tar {docker_name}:latest
 ```
+And then push it to the DockerHub. 
 
 ##### Submission 
 
@@ -165,7 +166,7 @@ You can refer to [here](https://github.com/Zx55/cga-challenge/blob/main/rh20tp_e
 
 #### 1.5 Rules 
 
-* For participation in the challenge, it is a strict requirement to register for your team by filling out the [Google Form].
+* For participation in the challenge, it is a strict requirement to register for your team by filling out the [Google Form](https://forms.gle/Tt4NHEZ3PDHESqij9).
 
 * Any kind of Large Language Models (LLMs) & Multimodal Large Language Models (MLLMs) can be used in this challenge. Both open-sourced models, *e.g.*, LLaMA or LLaVA, and close-sourced models that can be accessed via network requests, *e.g.*, GPT-4, are allowed.
 
