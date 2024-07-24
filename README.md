@@ -135,7 +135,7 @@ We provide basic components in `model/` to help you integrate your CGAs to bench
     docker run --gpus all -v comm:/comm {docker_name}
     ```
 
-    You can see data transfer in `/comm` if everything works.
+    You can see data transfer in `comm/` if everything works.
 
 #### 1.3 Submission
 
